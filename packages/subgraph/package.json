@@ -1,0 +1,19 @@
+{
+  "name": "revenue-sharing-source",
+  "license": "UNLICENSED",
+  "version": "0.0.1",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy:dev": "graph deploy --product hosted-service --network sepolia",
+    "create-local": "graph create --node http://localhost:8020/  daodesigner/revenue-sharing-source",
+    "remove-local": "graph remove --node http://localhost:8020/  daodesigner/revenue-sharing-source",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001  daodesigner/revenue-sharing-source",
+    "test": "graph test"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli": "0.60.0",
+    "@graphprotocol/graph-ts": "0.30.0"
+  },
+  "devDependencies": { "matchstick-as": "0.5.0" }
+}
