@@ -1,20 +1,17 @@
+import nodemailer from 'nodemailer';
 
-import nodemailer from "nodemailer";
+export const emailServer = process.env.SEMAIL;
 
-export const emailServer = process.env.EMAIL
-const newemail = "thomas.gondwe@bicos.io"
-
-const pass = process.env.PASS
+const password = process.env.S_APP_PASSWORD;
 
 export const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth:{
-        user: emailServer,
-        pass
-    }
-
-}) 
-export const mailOptions = {
-    from: emailServer,
-    to: newemail,
-}
+  service: 'gmail',
+  auth: {
+    user: emailServer,
+    pass: password,
+  },
+});
+// export const mailOptions = {
+//     from: emailServer,
+//     to: newemail,
+// }

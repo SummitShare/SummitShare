@@ -8,3 +8,4 @@ typechain-types
 cache
 artifacts
 build
+hardhat.config.ts

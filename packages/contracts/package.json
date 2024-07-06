@@ -19,7 +19,6 @@
     "@nomiclabs/hardhat-ethers": "^2.2.1",
     "@openzeppelin/contracts-upgradeable": "^5.0.1",
     "@openzeppelin/hardhat-upgrades": "^3.0.2",
-    "@types/axios": "^0.14.0",
     "@types/chai": "^4.3.9",
     "@types/mocha": "^10.0.3",
     "@types/node": "^20.8.7",
@@ -34,8 +33,7 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.0.0",
-    "@uniswap/v3-core": "^1.0.1",
-    "@uniswap/v3-periphery": "^1.4.4"
+    "@nomicfoundation/hardhat-verify": "^2.0.8",
+    "@openzeppelin/contracts": "^5.0.0"
   }
 }

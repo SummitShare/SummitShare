@@ -9,7 +9,7 @@ dotenv.config();
 
 // You should replace these values with your own node URL and private keys
 
-const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL;
+const SEPOLIA_RPC_URL = process.env.RPC_URL;
 const accounts = process.env.PRIVATE_KEYS?.split(',');
 
 
@@ -20,8 +20,8 @@ const config: HardhatUserConfig = {
       optimizer: {
         enabled: true,
         runs: 200
-      }
-    }
+      },
+    },
   },
   defender:{
     apiKey: process.env.DEFENDER_KEY as string,
@@ -36,18 +36,6 @@ const config: HardhatUserConfig = {
     },
   },
 
-  gasReporter: {
-    currency: "USD",
-    gasPrice: 100,
-    rst: true,
-    enabled: true,
-    coinmarketcap: "603bd12e-d2f3-4a9f-8c82-d5e346d9d482",
-  },
-  // contractSizer: {
-  //   alphaSort: true,
-  //   runOnCompile: true,
-  //   disambiguatePaths: false,
-  // },
 };
 
 export default config;

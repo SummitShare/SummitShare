@@ -1,135 +1,193 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ethers } from 'ethers';
-import { gql, useApolloClient } from '@apollo/client';
 import { TicketPurchaseProps, EthereumWindow } from '@/utils/dev/typeInit';
+import { createTicketProps } from '@/utils/dev/frontEndInterfaces';
 import { CONTRACT_ADDRESSES, contracts } from '@/utils/dev/contractInit';
+import { handleContractError } from '@/utils/dev/handleContractError';
+import useExhibit from '@/lib/useGetExhibitById';
+import { useSession } from 'next-auth/react';
+import Buttons from '@/app/components/button/Butons';
+import { useAccount } from 'wagmi';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
-const TicketPurchaseComponent = ({ userAddress, exhibitId }: TicketPurchaseProps) => {
+const TicketPurchaseComponent = ({ userAddress }: TicketPurchaseProps) => {
+  const session = useSession();
+  const [isVisible, setIsVisible] = useState(false);
+  const user_id = session.data?.user.id;
+
+  // Hardcoded exhibit ID for demo
+  const exhibitId = CONTRACT_ADDRESSES.exhibitId;
+
   // State hooks for managing component state
-  const [ticketPrice, setTicketPrice] = useState<string>('');
   const [status, setStatus] = useState<string>('');
-  const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-  const client = useApolloClient();
-  const router = useRouter();
+  const [provider, setProvider] =
+    useState<ethers.providers.Web3Provider | null>(null);
   const [purchaseSuccessful, setPurchaseSuccessful] = useState<boolean>(false);
-  //const [customGasLimit, setCustomGasLimit] = useState<string>('250000');
+  const [purchaseFailed, setPurchaseFailed] = useState<boolean>(false);
+  const exhibit = useExhibit(exhibitId);
 
+  useEffect(() => {
+    if (status) {
+      setIsVisible(true);
+      const timer = setTimeout(() => {
+        setIsVisible(false);
+      }, 4000); // 2 seconds
 
- // GraphQL query for fetching all exhibits
- const GET_ALL_EXHIBITS = gql`
- query GetAllExhibits {
-     exhibits {
-         id
-         exhibitDetails {
-             ticketPrice
-         }
-     }
- }
-`;
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
 
-   // Effect hook to initialize the Web3 provider when the component mounts or exhibitId changes
-   useEffect(() => {
-    //console.log("Exhibit ID:", exhibitId)
+  const createTicket = async () => {
+    // Ensure HOST is read correctly, considering Next.js environment variables need to be prefixed with NEXT_PUBLIC_ if they are to be used on the client-side.
+    const host = process.env.NEXT_PUBLIC_HOST;
+    //console.log(`host ${host} `)
+    const eventLink = `${host}/exhibit/0xe405b9c97656336ab949401bcd41ca3f50114725`;
+    // Construct the URL with the correct protocol (http or https) and ensure that the HOST variable includes the entire domain.
+    const url = `${host}api/v1/event/ticket/create`;
+    //console.log(`url ${url} ` ,user_id)
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userAddress, exhibitId, user_id, eventLink }),
+      });
+
+      // Check if the response is ok (status in the range 200-299)
+      if (!response.ok) {
+        // You could throw an error or handle it in another way depending on your error handling strategy
+        //console.log(`Error: ${response.status} - ${response.statusText}`);
+      }
+
+      return response.json(); // Assuming the server responds with JSON.
+    } catch (error) {
+      console.error('Failed to create ticket:', error);
+    }
+  };
+
+  // Effect hook to initialize the Web3 provider when the component mounts or exhibitId changes
+  useEffect(() => {
     const ethWindow = window as EthereumWindow;
     if (ethWindow.ethereum) {
-        const web3Provider = new ethers.providers.Web3Provider(ethWindow.ethereum);
+      const web3Provider = new ethers.providers.Web3Provider(
+        ethWindow.ethereum
+      );
 
-        web3Provider.send('eth_requestAccounts', []).then(() => {
-            setProvider(web3Provider);
-        }).catch((err) => {
-            setStatus(`Error connecting to user wallet: ${err.message}`);
+      web3Provider
+        .send('eth_requestAccounts', [])
+        .then(() => {
+          setProvider(web3Provider);
+        })
+        .catch((err) => {
+          setStatus(`Error connecting to user wallet: ${err.message}`);
         });
-
     } else {
-        setStatus('Please install a Web3 wallet (e.g., MetaMask) to purchase tickets.');
+      setStatus(
+        'Please install a Web3 wallet (e.g., MetaMask) to purchase tickets.'
+      );
+    }
+  }, [exhibitId]);
+
+  if (!exhibit) {
+    return <div>Loading or no Matching Exhibit Found.</div>;
+  }
+  const ticketPrice = exhibit.exhibitDetails[0]?.ticketPrice || '';
+
+  // Function to handle ticket purchase
+  const purchaseTicket = async () => {
+    if (!provider) {
+      setStatus('Web3 provider is not initialized.');
+      return;
     }
 
-}, [exhibitId]);
+    try {
+      // Contract Init with Modular Approach
+      const usdcContract = contracts.getMUSDC();
+      const museumContract = contracts.getMuseum();
 
-    // Effect hook for fetching ticket price
-    useEffect(() => {
-        client.query({ query: GET_ALL_EXHIBITS })
-          .then(response => {
-            const exhibits = response.data.exhibits;
-            const foundExhibit = exhibits.find((exhibit: { id: string; }) => exhibit.id === exhibitId);
-    
-            if (foundExhibit && foundExhibit.exhibitDetails.length > 0) {
-                // First item in exhibitDetails array contains the ticketPrice
-                setTicketPrice(foundExhibit.exhibitDetails[0].ticketPrice);
-            } else {
-                console.error('No matching exhibit found or no ticket details available');
-            }
-          })
-          .catch(error => {
-            console.error('Error fetching exhibits:', error);
-          });
-      }, [exhibitId, client]);
-    
-      if (!ticketPrice) {
-        return <div>Loading or no matching exhibit found...</div>;
-      }
-      
-      // Function to handle ticket purchase
-       const purchaseTicket = async () => {
-        if (!provider) {
-            setStatus('Web3 provider is not initialized.');
-            return;
-        }
+      // Approve USDC transfer for ticket purchase
+      setStatus('Approving USDC transfer...');
+      const gasLimitApprove = await usdcContract.estimateGas.approve(
+        CONTRACT_ADDRESSES.MuseumAdd,
+        ticketPrice
+      );
+      const approveTx = await usdcContract.approve(
+        CONTRACT_ADDRESSES.MuseumAdd,
+        ticketPrice,
+        { gasLimit: gasLimitApprove }
+      ); // { gasLimit });
+      await approveTx.wait(2);
 
-         // Convert customGasLimit to BigNumber
-        //const gasLimit = ethers.utils.parseUnits(customGasLimit, 'wei');
+      // Execute ticket purchase transaction
+      setStatus('Purchasing ticket...');
+      const gasLimitPurchase = await museumContract.estimateGas.purchaseTicket(
+        exhibitId,
+        ticketPrice
+      );
+      const purchaseTx = await museumContract.purchaseTicket(
+        exhibitId,
+        ticketPrice,
+        { gasLimit: gasLimitPurchase }
+      ); //{ gasLimit });
+      await purchaseTx.wait(4);
 
-        try {
+      //State update after successful ticket purchase
+      setPurchaseSuccessful(true);
+      setStatus('Ticket purchased successfully!');
+    } catch (error: any) {
+      console.error('Smart Contract Interaction Failed:', error);
+      const friendlyMessage = handleContractError(error as any); // Typecasting
+      setStatus(friendlyMessage);
+    }
+  };
 
-          // Contract Init with Modular Approach
-            const signer = provider.getSigner();
-            const usdcContract = contracts.getMUSDC(signer)
-            const museumContract = contracts.getMuseum(signer)
+  const url = 'localhost:3000/api/v1/events/tickets/create';
 
-            
-            // Approve USDC transfer for ticket purchase
-            setStatus('Approving USDC transfer...');
-            const approveTx = await usdcContract.approve(CONTRACT_ADDRESSES.MuseumAdd, ticketPrice,)// { gasLimit });
-            await approveTx.wait(2);
+  // useEffect(() => {
+  //   const sendData = async () => {
+  //     try {
+  //       const response = await fetch(url, {
+  //         method: 'POST',
+  //         headers: {
+  //           'Content-Type': 'application/json'
+  //         },
+  //         body: JSON.stringify(wallet_address,event_id,user_id,eventLink)
+  //       });
 
-            // Execute ticket purchase transaction
-            setStatus('Purchasing ticket...');
-            const purchaseTx = await museumContract.purchaseTicket(exhibitId, ticketPrice,) //{ gasLimit });
-            await purchaseTx.wait(2);
+  //       if (!response.ok) {
+  //         throw new Error(`Error: ${response.status} - ${response.statusText}`);
+  //       }
 
-            //State update after successful ticket purchase
-             setPurchaseSuccessful(true);
-             setStatus('Ticket purchased successfully!');
+  //       const responseData = await response.json();
+  //       console.log('Success:', responseData);
+  //     } catch (error) {
+  //       console.error('Failed to send data:', error);
+  //     }
+  //   };
 
-          
-        } catch (error: any) {
-            console.error('Error in purchasing ticket:', error);
-            setStatus(`Transaction failed: ${error.message}`);
-        }
-    };
+  //   sendData();
+  // }, [purchaseSuccessful]);
 
-    // Render component UI
-    return (
-      <div>
-        {purchaseSuccessful ? (
-          <div>
-            <p>Thank you for your purchase!</p>
-            {/*actions post-purchase */}
-          </div>
-        ) : (
-          <button 
-            className='px-[23px] py-[13px] bg-blue-950 font-opensans font-semibold w-fit rounded-xl h-fit text-white cursor-pointer'
-            onClick={purchaseTicket}
-            disabled={!ticketPrice}
-          >
-            Purchase
-          </button>
-        )}
-        {/* Display current status */}
-        {status && <p>{status}</p>}
+  // Render component UI
+  return (
+    <>
+      <Buttons type="primary" size="large" onClick={purchaseTicket}>
+        {purchaseSuccessful ? 'Subscribed' : 'Subscribe'}
+      </Buttons>
+
+      {/* Display current status */}
+      <div
+        className={`bg-green-500 border w-[90%] md:w-fit rounded-md p-3 fixed right-5 z-10 transition-transform duration-500 border-green-300 ${
+          isVisible ? 'translate-y-0 bottom-5' : 'translate-y-full -bottom-20'
+        }`}
+      >
+        {status && <p className="text-sm text-white font-semibold">{status}</p>}
       </div>
-    );
+    </>
+  );
 };
 
 export default TicketPurchaseComponent;
